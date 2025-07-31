@@ -1,0 +1,28 @@
+{
+  "name": "peer-server",
+  "version": "1.0.0",
+  "description": "Real-time collaborative code editor backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "collaboration",
+    "real-time",
+    "socket.io"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.53.0",
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10",
+    "socket.io": "^4.8.1",
+    "y-socket.io": "^1.1.3",
+    "yjs": "^13.6.27"
+  }
+}
