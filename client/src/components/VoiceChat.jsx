@@ -24,16 +24,20 @@ function VoiceChat({ roomId }) {
     socketRef.current = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001')
     
     socketRef.current.on('voice-user-joined', (data) => {
-      console.log('User joined voice:', data)
+      console.log('🔊 User joined voice:', data)
       setParticipants(prev => {
         const existing = prev.find(p => p.peerId === data.peerId)
-        if (existing) return prev
+        if (existing) {
+          console.log('🔊 User already in participants list')
+          return prev
+        }
+        console.log('🔊 Adding new participant:', data)
         return [...prev, data]
       })
     })
 
     socketRef.current.on('voice-user-left', (data) => {
-      console.log('User left voice:', data)
+      console.log('🔊 User left voice:', data)
       setParticipants(prev => prev.filter(p => p.peerId !== data.peerId))
       
       // Close connection if it exists
@@ -45,7 +49,8 @@ function VoiceChat({ roomId }) {
     })
 
     socketRef.current.on('voice-participants', (participantsList) => {
-      console.log('Voice participants update:', participantsList)
+      console.log('🔊 Voice participants update:', participantsList)
+      console.log('🔊 Setting participants to:', participantsList.length, 'participants')
       setParticipants(participantsList)
     })
 
@@ -236,7 +241,8 @@ function VoiceChat({ roomId }) {
         console.log('Peer opened with ID:', id)
         setIsConnected(true)
         
-        // Join room via socket
+        // Join room via socket with more debug info
+        console.log('🔊 Joining voice room:', { roomId, peerId: id, userName: profile?.full_name || profile?.username || 'Anonymous' })
         socketRef.current.emit('join-voice-room', {
           roomId,
           peerId: id,
