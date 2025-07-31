@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { dbHelpers } from '../lib/supabase'
+import InviteToRoomModal from '../components/InviteToRoomModal'
 
 function Friends() {
   const [friends, setFriends] = useState([])
@@ -11,6 +12,8 @@ function Friends() {
   const [searching, setSearching] = useState(false)
   const [activeTab, setActiveTab] = useState('friends')
   const [sentRequests, setSentRequests] = useState([])
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [selectedFriend, setSelectedFriend] = useState(null)
 
   const { user, profile } = useAuth()
   const navigate = useNavigate()
@@ -67,20 +70,48 @@ function Friends() {
 
   const handleSendFriendRequest = async (userId) => {
     try {
-      const { error } = await dbHelpers.sendFriendRequest(userId)
-      if (!error) {
+      console.log('🚀 Attempting to send friend request to:', userId)
+      const { data, error } = await dbHelpers.sendFriendRequest(userId)
+      
+      if (error) {
+        console.error('❌ Friend request failed:', error)
+        
+        // Show user-friendly error messages
+        if (error.code === '23505') {
+          alert('Friend request already sent to this user!')
+        } else if (error.message.includes('foreign key')) {
+          alert('User not found!')
+        } else {
+          alert(`Failed to send friend request: ${error.message}`)
+        }
+      } else {
+        console.log('✅ Friend request sent successfully:', data)
+        alert('Friend request sent successfully!')
+        
         // Remove from search results and add to sent requests
         setSearchResults(searchResults.filter(user => user.id !== userId))
         loadFriendsData() // Reload to get updated sent requests
       }
     } catch (error) {
-      console.error('Error sending friend request:', error)
+      console.error('❌ Exception sending friend request:', error)
+      alert(`Error: ${error.message}`)
     }
   }
 
   const handleRemoveFriend = async (friendshipId) => {
     // Note: You'd need to implement a remove friend function in dbHelpers
     console.log('Remove friend functionality to be implemented')
+  }
+
+  const handleInviteToRoom = (friend) => {
+    console.log('🚀 Opening invite modal for friend:', friend)
+    setSelectedFriend(friend)
+    setShowInviteModal(true)
+  }
+
+  const handleInviteSuccess = (roomId, friend) => {
+    console.log('✅ Successfully invited friend to room:', { roomId, friend })
+    // Optionally refresh data or show success message
   }
 
   if (loading) {
@@ -151,7 +182,12 @@ function Friends() {
                       </div>
                       <div className="friend-actions">
                         <button className="btn-primary">Message</button>
-                        <button className="btn-secondary">Invite to Room</button>
+                        <button 
+                          onClick={() => handleInviteToRoom(friendship.friend)}
+                          className="btn-secondary"
+                        >
+                          Invite to Room
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -247,6 +283,18 @@ function Friends() {
           )}
         </div>
       </div>
+
+      {/* Invite to Room Modal */}
+      {showInviteModal && selectedFriend && (
+        <InviteToRoomModal
+          friend={selectedFriend}
+          onClose={() => {
+            setShowInviteModal(false)
+            setSelectedFriend(null)
+          }}
+          onInvite={handleInviteSuccess}
+        />
+      )}
     </div>
   )
 }

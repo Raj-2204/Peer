@@ -61,12 +61,20 @@ export const authHelpers = {
 export const dbHelpers = {
   // Profile functions
   getProfile: async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    return { data, error }
+    try {
+      console.log('🔄 Querying profile for user:', userId)
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+      
+      console.log('📊 Profile query result:', { data, error })
+      return { data, error }
+    } catch (error) {
+      console.error('❌ Profile query exception:', error)
+      return { data: null, error }
+    }
   },
 
   updateProfile: async (userId, updates) => {
@@ -90,12 +98,34 @@ export const dbHelpers = {
 
   // Friend request functions
   sendFriendRequest: async (receiverId) => {
-    const { data, error } = await supabase
-      .from('friend_requests')
-      .insert([{ receiver_id: receiverId }])
-      .select()
-      .single()
-    return { data, error }
+    try {
+      console.log('🔄 Sending friend request to:', receiverId)
+      
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        console.error('❌ Not authenticated')
+        return { data: null, error: new Error('Not authenticated') }
+      }
+
+      console.log('👤 Sender ID:', user.id)
+      
+      const { data, error } = await supabase
+        .from('friend_requests')
+        .insert([{ 
+          sender_id: user.id,
+          receiver_id: receiverId,
+          status: 'pending'
+        }])
+        .select()
+        .single()
+      
+      console.log('📤 Friend request result:', { data, error })
+      return { data, error }
+    } catch (error) {
+      console.error('❌ Send friend request exception:', error)
+      return { data: null, error }
+    }
   },
 
   getFriendRequests: async (type = 'received') => {
@@ -119,19 +149,71 @@ export const dbHelpers = {
   },
 
   respondToFriendRequest: async (requestId, action) => {
-    if (action === 'accept') {
-      const { error } = await supabase.rpc('accept_friend_request', {
-        request_id: requestId
-      })
-      return { error }
-    } else {
-      const { data, error } = await supabase
-        .from('friend_requests')
-        .update({ status: 'declined', updated_at: new Date().toISOString() })
-        .eq('id', requestId)
-        .select()
-        .single()
-      return { data, error }
+    try {
+      console.log('🔄 Responding to friend request:', requestId, action)
+      
+      if (action === 'accept') {
+        // Step 1: Get the friend request details
+        const { data: request, error: requestError } = await supabase
+          .from('friend_requests')
+          .select('*')
+          .eq('id', requestId)
+          .single()
+        
+        if (requestError) {
+          console.error('❌ Failed to get friend request:', requestError)
+          return { error: requestError }
+        }
+        
+        console.log('📋 Friend request details:', request)
+        
+        // Step 2: Update friend request status to accepted
+        const { error: updateError } = await supabase
+          .from('friend_requests')
+          .update({ status: 'accepted' })
+          .eq('id', requestId)
+        
+        if (updateError) {
+          console.error('❌ Failed to update friend request:', updateError)
+          return { error: updateError }
+        }
+        
+        // Step 3: Create friendship (ensure consistent ordering)
+        const user1_id = request.sender_id < request.receiver_id ? request.sender_id : request.receiver_id
+        const user2_id = request.sender_id < request.receiver_id ? request.receiver_id : request.sender_id
+        
+        const { data: friendship, error: friendshipError } = await supabase
+          .from('friends')
+          .insert([{
+            user1_id: user1_id,
+            user2_id: user2_id
+          }])
+          .select()
+          .single()
+        
+        if (friendshipError) {
+          console.error('❌ Failed to create friendship:', friendshipError)
+          return { error: friendshipError }
+        }
+        
+        console.log('✅ Friendship created:', friendship)
+        return { data: friendship, error: null }
+        
+      } else {
+        // Decline the request
+        const { data, error } = await supabase
+          .from('friend_requests')
+          .update({ status: 'declined' })
+          .eq('id', requestId)
+          .select()
+          .single()
+        
+        console.log('❌ Friend request declined:', data)
+        return { data, error }
+      }
+    } catch (error) {
+      console.error('❌ Exception responding to friend request:', error)
+      return { data: null, error }
     }
   },
 
@@ -187,19 +269,53 @@ export const dbHelpers = {
   },
 
   getUserRooms: async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return { data: null, error: new Error('Not authenticated') }
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return { data: null, error: new Error('Not authenticated') }
 
-    const { data, error } = await supabase
-      .from('room_members')
-      .select(`
-        *,
-        room:room_id(*)
-      `)
-      .eq('user_id', user.id)
-      .order('joined_at', { ascending: false })
-    
-    return { data: data?.map(membership => ({ ...membership.room, role: membership.role })), error }
+      console.log('🔄 Fetching user rooms for:', user.id)
+      
+      // Simplified query without join to avoid 500 error
+      const { data, error } = await supabase
+        .from('room_members')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('joined_at', { ascending: false })
+      
+      console.log('📊 Room members query result:', { data, error })
+      
+      if (error) {
+        console.error('❌ Room members query failed:', error)
+        return { data: [], error: null } // Return empty array instead of failing
+      }
+      
+      // If we have room memberships, get the room details separately
+      if (data && data.length > 0) {
+        const roomIds = data.map(membership => membership.room_id)
+        const { data: rooms, error: roomsError } = await supabase
+          .from('rooms')
+          .select('*')
+          .in('id', roomIds)
+        
+        if (roomsError) {
+          console.error('❌ Rooms query failed:', roomsError)
+          return { data: [], error: null }
+        }
+        
+        // Combine membership data with room data
+        const roomsWithRoles = data.map(membership => {
+          const room = rooms.find(r => r.id === membership.room_id)
+          return room ? { ...room, role: membership.role } : null
+        }).filter(Boolean)
+        
+        return { data: roomsWithRoles, error: null }
+      }
+      
+      return { data: [], error: null }
+    } catch (error) {
+      console.error('❌ getUserRooms exception:', error)
+      return { data: [], error: null } // Don't break the app
+    }
   },
 
   getRoomMembers: async (roomId) => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import Editor from '@monaco-editor/react'
 import { io } from 'socket.io-client'
 
@@ -8,20 +8,68 @@ function CodeEditor({ roomId, code, language, onCodeChange, onLanguageChange }) 
   const [isConnected, setIsConnected] = useState(false)
   const isUpdatingFromRemote = useRef(false)
   const [editorValue, setEditorValue] = useState(code || '// Welcome to collaborative coding!\nconsole.log("Hello World");')
+  const debounceTimer = useRef(null)
+  const lastSentValue = useRef('')
+  const connectionRetryTimer = useRef(null)
+
+  // Debounced function to send code changes
+  const debouncedSendCode = useCallback((value) => {
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current)
+    }
+    
+    debounceTimer.current = setTimeout(() => {
+      if (socketRef.current?.connected && value !== lastSentValue.current) {
+        console.log('Sending debounced code change:', value.substring(0, 50) + '...')
+        socketRef.current.emit('code-change', {
+          roomId,
+          code: value,
+          language
+        })
+        lastSentValue.current = value
+      }
+    }, 200) // Reduced to 200ms for better responsiveness
+  }, [roomId, language])
 
   useEffect(() => {
-    // Connect to Socket.IO server
-    socketRef.current = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001')
+    // Connect to Socket.IO server with better options
+    socketRef.current = io(import.meta.env.VITE_SERVER_URL || 'http://localhost:3001', {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      timeout: 20000,
+    })
 
     socketRef.current.on('connect', () => {
       console.log('Connected to server')
       setIsConnected(true)
       socketRef.current.emit('join-room', roomId)
+      
+      // Clear retry timer on successful connection
+      if (connectionRetryTimer.current) {
+        clearTimeout(connectionRetryTimer.current)
+      }
     })
 
-    socketRef.current.on('disconnect', () => {
-      console.log('Disconnected from server')
-      setIsConnected(false)
+    socketRef.current.on('disconnect', (reason) => {
+      console.log('Disconnected from server:', reason)
+      // Only show disconnected for actual disconnections, not brief hiccups
+      if (reason === 'io server disconnect' || reason === 'io client disconnect') {
+        setIsConnected(false)
+      } else {
+        // For network issues, wait a bit before showing disconnected
+        connectionRetryTimer.current = setTimeout(() => {
+          if (!socketRef.current?.connected) {
+            setIsConnected(false)
+          }
+        }, 1000)
+      }
+    })
+
+    socketRef.current.on('reconnect', () => {
+      console.log('Reconnected to server')
+      setIsConnected(true)
+      socketRef.current.emit('join-room', roomId)
     })
 
     // Listen for room state
@@ -31,20 +79,24 @@ function CodeEditor({ roomId, code, language, onCodeChange, onLanguageChange }) 
         isUpdatingFromRemote.current = true
         setEditorValue(roomState.code)
         onCodeChange(roomState.code)
+        lastSentValue.current = roomState.code
         setTimeout(() => {
           isUpdatingFromRemote.current = false
         }, 100)
       }
-      onLanguageChange(roomState.language)
+      if (roomState.language) {
+        onLanguageChange(roomState.language)
+      }
     })
 
     // Listen for code changes from other users
     socketRef.current.on('code-change', (data) => {
-      console.log('Received code change:', data)
+      console.log('Received code change from remote:', data.code.substring(0, 50) + '...')
       if (data.code !== editorValue && !isUpdatingFromRemote.current) {
         isUpdatingFromRemote.current = true
         setEditorValue(data.code)
         onCodeChange(data.code)
+        lastSentValue.current = data.code
         setTimeout(() => {
           isUpdatingFromRemote.current = false
         }, 100)
@@ -58,11 +110,17 @@ function CodeEditor({ roomId, code, language, onCodeChange, onLanguageChange }) 
     })
 
     return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current)
+      }
+      if (connectionRetryTimer.current) {
+        clearTimeout(connectionRetryTimer.current)
+      }
       if (socketRef.current) {
         socketRef.current.disconnect()
       }
     }
-  }, [roomId, onCodeChange, onLanguageChange, editorValue])
+  }, [roomId])
 
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor
@@ -79,17 +137,12 @@ function CodeEditor({ roomId, code, language, onCodeChange, onLanguageChange }) 
       return
     }
     
-    setEditorValue(value || '')
-    onCodeChange(value || '')
+    const newValue = value || ''
+    setEditorValue(newValue)
+    onCodeChange(newValue)
     
-    if (socketRef.current && isConnected) {
-      console.log('Emitting code change via onChange:', (value || '').substring(0, 50) + '...')
-      socketRef.current.emit('code-change', {
-        roomId,
-        code: value || '',
-        language
-      })
-    }
+    // Use debounced sending to prevent overwhelming the server
+    debouncedSendCode(newValue)
   }
 
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import CodeEditor from '../components/CodeEditor'
+import VoiceChat from '../components/VoiceChat'
 
 function Room() {
   const { id: roomId } = useParams()
@@ -81,6 +82,9 @@ function Room() {
           Copy Room URL
         </button>
       </div>
+
+      {/* Voice Chat */}
+      <VoiceChat roomId={roomId} />
 
       <div className="editor-controls">
         <select 

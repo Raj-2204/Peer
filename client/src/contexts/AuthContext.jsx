@@ -16,22 +16,49 @@ export const AuthProvider = ({ children }) => {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [session, setSession] = useState(null)
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user ?? null)
-      
-      if (session?.user) {
-        await loadUserProfile(session.user.id)
+      try {
+        console.log('🔄 Getting initial session...')
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('❌ Session error:', error)
+          setError(error.message)
+          setLoading(false)
+          return
+        }
+
+        console.log('✅ Session loaded:', !!session)
+        setSession(session)
+        setUser(session?.user ?? null)
+        
+        if (session?.user) {
+          console.log('👤 Loading user profile...')
+          await loadUserProfile(session.user.id)
+        }
+        
+        setLoading(false)
+        console.log('✅ Auth initialization complete')
+      } catch (error) {
+        console.error('❌ Auth initialization error:', error)
+        setError(error.message)
+        setLoading(false)
       }
-      
-      setLoading(false)
     }
 
     getInitialSession()
+
+    // Fallback: Force stop loading after 10 seconds
+    const loadingTimeout = setTimeout(() => {
+      if (loading) {
+        console.warn('⚠️ Auth loading timeout - forcing completion')
+        setLoading(false)
+      }
+    }, 10000)
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -50,19 +77,41 @@ export const AuthProvider = ({ children }) => {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      clearTimeout(loadingTimeout)
+    }
   }, [])
 
   const loadUserProfile = async (userId) => {
     try {
-      const { data, error } = await dbHelpers.getProfile(userId)
+      console.log('🔄 Loading profile for user:', userId)
+      
+      // Add timeout to prevent hanging
+      const profilePromise = dbHelpers.getProfile(userId)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Profile query timeout')), 5000)
+      )
+      
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise])
+      
       if (error) {
-        console.error('Error loading profile:', error)
+        console.error('❌ Profile loading error:', error)
+        // If profile doesn't exist, create a basic one
+        if (error.code === 'PGRST116' || error.message.includes('No rows')) {
+          console.log('📝 No profile found, user needs to complete setup')
+          setProfile(null) // This will trigger profile setup UI
+        }
       } else {
+        console.log('✅ Profile loaded:', data)
         setProfile(data)
       }
     } catch (error) {
-      console.error('Error loading profile:', error)
+      console.error('❌ Profile loading exception:', error)
+      if (error.message === 'Profile query timeout') {
+        console.warn('⏱️ Profile query timed out, continuing without profile')
+      }
+      setProfile(null)
     }
   }
 
@@ -123,11 +172,39 @@ export const AuthProvider = ({ children }) => {
     profile,
     session,
     loading,
+    error,
     signUp,
     signIn,
     signOut,
     updateProfile,
     loadUserProfile
+  }
+
+  // Show error state if initialization failed
+  if (error && !user) {
+    return (
+      <div className="error-container" style={{ 
+        minHeight: '100vh', 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        background: '#1e1e1e',
+        color: '#ffffff',
+        flexDirection: 'column',
+        gap: '1rem',
+        padding: '2rem'
+      }}>
+        <h2 style={{ color: '#dc3545' }}>Authentication Error</h2>
+        <p>There was an issue connecting to the authentication service.</p>
+        <p style={{ fontSize: '0.9rem', color: '#999' }}>Error: {error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="btn-primary"
+        >
+          Retry
+        </button>
+      </div>
+    )
   }
 
   return (
