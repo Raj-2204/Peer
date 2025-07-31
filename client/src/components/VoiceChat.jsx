@@ -10,7 +10,7 @@ function VoiceChat({ roomId }) {
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState(null)
   
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
   const peerRef = useRef(null)
   const socketRef = useRef(null)
   const localStreamRef = useRef(null)
@@ -189,6 +189,12 @@ function VoiceChat({ roomId }) {
   const joinVoiceChat = async () => {
     if (isJoining || isConnected) return
     
+    // Wait for user/profile data to be available
+    if (!user && !profile) {
+      setError('Please wait for authentication to complete...')
+      return
+    }
+    
     setIsJoining(true)
     setError(null)
     
@@ -206,7 +212,11 @@ function VoiceChat({ roomId }) {
       detectSpeaking(stream)
       
       // Create peer with better production configuration
-      const peerId = `peer-${roomId}-${profile?.id || 'anon'}-${Date.now()}`
+      const userId = profile?.id || user?.id || 'anon'
+      const userName = profile?.full_name || profile?.username || user?.email || 'Anonymous'
+      const peerId = `peer-${roomId}-${userId}-${Date.now()}`
+      
+      console.log('🔊 Creating peer with:', { userId, userName, peerId })
       
       peerRef.current = new Peer(peerId, {
         host: '0.peerjs.com',
@@ -242,11 +252,11 @@ function VoiceChat({ roomId }) {
         setIsConnected(true)
         
         // Join room via socket with more debug info
-        console.log('🔊 Joining voice room:', { roomId, peerId: id, userName: profile?.full_name || profile?.username || 'Anonymous' })
+        console.log('🔊 Joining voice room:', { roomId, peerId: id, userName })
         socketRef.current.emit('join-voice-room', {
           roomId,
           peerId: id,
-          userName: profile?.full_name || profile?.username || 'Anonymous'
+          userName: userName
         })
       })
 
