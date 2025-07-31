@@ -81,6 +81,75 @@ function VoiceChat({ roomId }) {
     }
   }
 
+  const tryFallbackPeerConnection = (peerId, stream) => {
+    try {
+      console.log('Trying fallback peer connection...')
+      
+      // Destroy existing peer first
+      if (peerRef.current) {
+        peerRef.current.destroy()
+      }
+      
+      // Create new peer with no specific server (uses default)
+      peerRef.current = new Peer(peerId + '-fallback', {
+        config: {
+          iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            }
+          ]
+        }
+      })
+
+      peerRef.current.on('open', (id) => {
+        console.log('Fallback peer opened with ID:', id)
+        setIsConnected(true)
+        setError(null)
+        
+        // Join room via socket
+        socketRef.current.emit('join-voice-room', {
+          roomId,
+          peerId: id,
+          userName: profile?.full_name || profile?.username || 'Anonymous'
+        })
+      })
+
+      peerRef.current.on('call', (call) => {
+        console.log('Receiving fallback call from:', call.peer)
+        call.answer(stream)
+        
+        call.on('stream', (remoteStream) => {
+          console.log('Got fallback stream from:', call.peer)
+          playRemoteStream(remoteStream, call.peer)
+        })
+        
+        call.on('close', () => {
+          console.log('Fallback call closed from:', call.peer)
+          removeRemoteAudio(call.peer)
+        })
+        
+        connectionsRef.current.set(call.peer, call)
+      })
+
+      peerRef.current.on('error', (err) => {
+        console.error('Fallback peer error:', err)
+        setError('Voice chat is currently unavailable')
+        setIsConnected(false)
+        setIsJoining(false)
+      })
+
+    } catch (err) {
+      console.error('Fallback connection failed:', err)
+      setError('Voice chat is currently unavailable')
+      setIsConnected(false)
+      setIsJoining(false)
+    }
+  }
+
   const detectSpeaking = (stream) => {
     try {
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)()
@@ -131,19 +200,36 @@ function VoiceChat({ roomId }) {
       localStreamRef.current = stream
       detectSpeaking(stream)
       
-      // Create peer using default PeerJS cloud service (most reliable)
+      // Create peer with better production configuration
       const peerId = `peer-${roomId}-${profile?.id || 'anon'}-${Date.now()}`
       
       peerRef.current = new Peer(peerId, {
-        // Use default PeerJS cloud service - most reliable
+        host: '0.peerjs.com',
+        port: 443,
+        path: '/',
+        secure: true,
         config: {
           iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
-            { urls: 'stun:global.stun.twilio.com:3478' },
             { urls: 'stun:stun1.l.google.com:19302' },
-            { urls: 'stun:stun2.l.google.com:19302' }
-          ]
-        }
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            // Add TURN servers for better connectivity
+            {
+              urls: 'turn:openrelay.metered.ca:80',
+              username: 'openrelayproject',
+              credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:openrelay.metered.ca:443',
+              username: 'openrelayproject', 
+              credential: 'openrelayproject'
+            }
+          ],
+          iceCandidatePoolSize: 10
+        },
+        debug: 1 // Enable debug for production troubleshooting
       })
 
       peerRef.current.on('open', (id) => {
@@ -177,9 +263,19 @@ function VoiceChat({ roomId }) {
 
       peerRef.current.on('error', (err) => {
         console.error('Peer error:', err)
-        setError(`Connection error: ${err.message || 'Failed to connect'}`)
-        setIsConnected(false)
-        setIsJoining(false)
+        
+        if (err.type === 'network' || err.type === 'server-error') {
+          setError('Connection failed - trying alternative server...')
+          
+          // Retry with fallback configuration after 3 seconds
+          setTimeout(() => {
+            tryFallbackPeerConnection(peerId, localStreamRef.current)
+          }, 3000)
+        } else {
+          setError(`Voice chat error: ${err.message || 'Connection failed'}`)
+          setIsConnected(false)
+          setIsJoining(false)
+        }
       })
 
       // Connect to existing participants
