@@ -508,7 +508,7 @@ function VoiceChat({ roomId }) {
       container.id = 'remote-videos-container'
       container.style.cssText = `
         position: fixed;
-        top: 20px;
+        top: 80px;
         right: 20px;
         display: flex;
         flex-wrap: wrap;

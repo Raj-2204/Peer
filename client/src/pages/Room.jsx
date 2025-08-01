@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import CodeEditor from '../components/CodeEditor'
 import VoiceChat from '../components/VoiceChat'
+import MembersSidebar from '../components/MembersSidebar'
 
 function Room() {
   const { id: roomId } = useParams()
@@ -76,6 +77,9 @@ function Room() {
 
   return (
     <div className="room-container">
+      {/* Members Sidebar */}
+      <MembersSidebar roomId={roomId} />
+
       <div className="room-header">
         <h1>Room: {roomId}</h1>
         <button onClick={copyRoomUrl} className="copy-url-btn">
