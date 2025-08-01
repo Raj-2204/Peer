@@ -95,18 +95,31 @@ function VoiceChat({ roomId }) {
         peerRef.current.destroy()
       }
       
-      // Create new peer with no specific server (uses default)
+      // Create new peer with alternative PeerJS server for fallback
       peerRef.current = new Peer(peerId + '-fallback', {
+        // Try alternative PeerJS server
+        host: 'peerjs-server.herokuapp.com',
+        secure: true,
         config: {
           iceServers: [
+            // Use more STUN servers for fallback
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun.cloudflare.com:3478' },
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            // Multiple TURN servers
             {
-              urls: 'turn:openrelay.metered.ca:80',
+              urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'],
               username: 'openrelayproject',
               credential: 'openrelayproject'
+            },
+            {
+              urls: 'turn:relay.backups.cz:3478',
+              username: 'webrtc',
+              credential: 'webrtc'  
             }
-          ]
+          ],
+          iceTransportPolicy: 'all'
         }
       })
 
@@ -219,32 +232,36 @@ function VoiceChat({ roomId }) {
       console.log('🔊 Creating peer with:', { userId, userName, peerId })
       
       peerRef.current = new Peer(peerId, {
-        host: '0.peerjs.com',
-        port: 443,
+        // Use multiple PeerJS servers for better reliability
+        host: location.hostname === 'localhost' ? 'localhost' : '0.peerjs.com',
+        port: location.hostname === 'localhost' ? 9000 : 443,
         path: '/',
-        secure: true,
+        secure: location.hostname !== 'localhost',
         config: {
           iceServers: [
+            // Multiple STUN servers for better connectivity
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
-            { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            // Add TURN servers for better connectivity
+            { urls: 'stun:global.stun.twilio.com:3478' },
+            // TURN servers for NAT traversal
             {
-              urls: 'turn:openrelay.metered.ca:80',
+              urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443'],
               username: 'openrelayproject',
               credential: 'openrelayproject'
             },
             {
-              urls: 'turn:openrelay.metered.ca:443',
-              username: 'openrelayproject', 
-              credential: 'openrelayproject'
+              urls: 'turn:relay.backups.cz:3478',
+              username: 'webrtc',
+              credential: 'webrtc'
             }
           ],
-          iceCandidatePoolSize: 10
+          iceCandidatePoolSize: 10,
+          // Add additional WebRTC configuration for production
+          iceTransportPolicy: 'all',
+          bundlePolicy: 'balanced'
         },
-        debug: 1 // Enable debug for production troubleshooting
+        debug: location.hostname !== 'localhost' ? 2 : 1 // More debugging in production
       })
 
       peerRef.current.on('open', (id) => {
