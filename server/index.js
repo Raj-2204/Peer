@@ -35,6 +35,12 @@ const rooms = new Map();
 // Store voice chat participants by room
 const voiceRooms = new Map();
 
+// Store room members by room (for presence tracking)
+const roomMembers = new Map();
+
+// Store chat messages by room
+const roomMessages = new Map();
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -146,6 +152,156 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Member presence tracking handlers
+  socket.on('join-room-member', (data) => {
+    const { roomId, userId, userName, userAvatar } = data;
+    
+    console.log(`👤 Member ${userName} (${userId}) joined room ${roomId}`);
+    
+    // Initialize room members if it doesn't exist
+    if (!roomMembers.has(roomId)) {
+      roomMembers.set(roomId, []);
+    }
+    
+    // Add member to room
+    const members = roomMembers.get(roomId);
+    const existingMember = members.find(m => m.userId === userId);
+    
+    if (!existingMember) {
+      const member = {
+        userId,
+        userName,
+        userAvatar,
+        socketId: socket.id,
+        joinedAt: new Date().toISOString()
+      };
+      
+      members.push(member);
+      roomMembers.set(roomId, members);
+      
+      console.log(`👤 Room ${roomId} now has ${members.length} members:`, members.map(m => m.userName));
+      
+      // Join socket room for member updates
+      socket.join(`members-${roomId}`);
+      
+      // Notify room about new member
+      socket.to(`members-${roomId}`).emit('member-joined', member);
+      
+      // Send current members list to new member
+      socket.emit('room-members-update', members);
+      
+      // Also broadcast updated list to all members
+      io.to(`members-${roomId}`).emit('room-members-update', members);
+    } else {
+      console.log(`👤 Member ${userName} already in room ${roomId}`);
+      // Update socket ID in case of reconnection
+      existingMember.socketId = socket.id;
+      socket.join(`members-${roomId}`);
+      socket.emit('room-members-update', members);
+    }
+  });
+
+  socket.on('leave-room-member', (data) => {
+    const { roomId, userId } = data;
+    
+    console.log(`👤 Member ${userId} left room ${roomId}`);
+    
+    if (roomMembers.has(roomId)) {
+      const members = roomMembers.get(roomId);
+      const leavingMember = members.find(m => m.userId === userId);
+      const updatedMembers = members.filter(m => m.userId !== userId);
+      
+      roomMembers.set(roomId, updatedMembers);
+      
+      // Leave socket room
+      socket.leave(`members-${roomId}`);
+      
+      // Notify other members
+      if (leavingMember) {
+        socket.to(`members-${roomId}`).emit('member-left', leavingMember);
+        io.to(`members-${roomId}`).emit('room-members-update', updatedMembers);
+      }
+    }
+  });
+
+  // Chat handlers
+  socket.on('join-chat-room', (data) => {
+    const { roomId, userId, userName } = data;
+    
+    console.log(`💬 ${userName} joined chat in room ${roomId}`);
+    
+    // Initialize room messages if it doesn't exist
+    if (!roomMessages.has(roomId)) {
+      roomMessages.set(roomId, []);
+    }
+    
+    // Join socket room for chat
+    socket.join(`chat-${roomId}`);
+    
+    // Send chat history to joining user
+    const messages = roomMessages.get(roomId);
+    socket.emit('chat-history', messages);
+  });
+
+  socket.on('send-message', (messageData) => {
+    const { roomId, userId, userName, userAvatar, message, timestamp } = messageData;
+    
+    console.log(`💬 Message from ${userName} in room ${roomId}:`, message);
+    
+    // Create message object
+    const messageObj = {
+      userId,
+      userName,
+      userAvatar,
+      message,
+      timestamp,
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
+    };
+    
+    // Store message in room history
+    if (!roomMessages.has(roomId)) {
+      roomMessages.set(roomId, []);
+    }
+    
+    const messages = roomMessages.get(roomId);
+    messages.push(messageObj);
+    
+    // Keep only last 100 messages per room
+    if (messages.length > 100) {
+      messages.splice(0, messages.length - 100);
+    }
+    
+    roomMessages.set(roomId, messages);
+    
+    // Broadcast message to all users in the chat room
+    io.to(`chat-${roomId}`).emit('new-message', messageObj);
+  });
+
+  // Collaborative cursor handlers
+  socket.on('cursor-change', (data) => {
+    const { roomId, userId, userName, position, color } = data;
+    
+    // Broadcast cursor position to all other users in the room
+    socket.to(roomId).emit('cursor-change', {
+      userId,
+      userName,
+      position,
+      color
+    });
+  });
+
+  socket.on('edit-highlight', (data) => {
+    const { roomId, userId, startPos, endPos, color } = data;
+    
+    // Broadcast edit highlight to all other users in the room
+    socket.to(roomId).emit('edit-highlight', {
+      userId,
+      startPos,
+      endPos,
+      color
+    });
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
@@ -158,6 +314,21 @@ io.on('connection', (socket) => {
         
         // Notify other participants
         socket.to(`voice-${roomId}`).emit('voice-user-left', { peerId: userParticipant.peerId });
+      }
+    });
+
+    // Clean up room members when user disconnects
+    roomMembers.forEach((members, roomId) => {
+      const userMember = members.find(m => m.socketId === socket.id);
+      if (userMember) {
+        const updatedMembers = members.filter(m => m.socketId !== socket.id);
+        roomMembers.set(roomId, updatedMembers);
+        
+        console.log(`👤 Member ${userMember.userName} disconnected from room ${roomId}`);
+        
+        // Notify other members
+        socket.to(`members-${roomId}`).emit('member-left', userMember);
+        socket.to(`members-${roomId}`).emit('room-members-update', updatedMembers);
       }
     });
   });
@@ -202,7 +373,13 @@ app.post('/run', async (req, res) => {
 });
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', rooms: rooms.size, voiceRooms: voiceRooms.size });
+  res.json({ 
+    status: 'OK', 
+    rooms: rooms.size, 
+    voiceRooms: voiceRooms.size,
+    roomMembers: roomMembers.size,
+    roomMessages: roomMessages.size
+  });
 });
 
 app.get('/', (req, res) => {
@@ -211,7 +388,9 @@ app.get('/', (req, res) => {
     status: 'running',
     endpoints: ['/health', '/run'],
     rooms: rooms.size,
-    voiceRooms: voiceRooms.size
+    voiceRooms: voiceRooms.size,
+    roomMembers: roomMembers.size,
+    roomMessages: roomMessages.size
   });
 });
 
