@@ -32,6 +32,42 @@ function VoiceChat({ roomId }) {
           return prev
         }
         console.log('🔊 Adding new participant:', data)
+        
+        // Handle new participant connection with proper signaling
+        if (peerRef.current && peerRef.current.id) {
+          const myPeerId = peerRef.current.id
+          const shouldInitiate = myPeerId < data.peerId
+          
+          if (shouldInitiate && !connectionsRef.current.has(data.peerId)) {
+            console.log('🔊 Initiating call to new participant:', data.peerId)
+            setTimeout(() => {
+              if (peerRef.current && localStreamRef.current && !connectionsRef.current.has(data.peerId)) {
+                const call = peerRef.current.call(data.peerId, localStreamRef.current)
+                
+                call.on('stream', (remoteStream) => {
+                  console.log('🔊 Got stream from new participant:', data.peerId)
+                  playRemoteStream(remoteStream, data.peerId)
+                })
+                
+                call.on('close', () => {
+                  console.log('🔊 Call closed with new participant:', data.peerId)
+                  removeRemoteAudio(data.peerId)
+                  connectionsRef.current.delete(data.peerId)
+                })
+                
+                call.on('error', (err) => {
+                  console.error('🔊 Call error with new participant:', data.peerId, err)
+                  connectionsRef.current.delete(data.peerId)
+                })
+                
+                connectionsRef.current.set(data.peerId, call)
+              }
+            }, 1500) // Slightly longer delay for new participants
+          } else {
+            console.log('🔊 Waiting for call from new participant:', data.peerId)
+          }
+        }
+        
         return [...prev, data]
       })
     })
@@ -279,6 +315,13 @@ function VoiceChat({ roomId }) {
 
       peerRef.current.on('call', (call) => {
         console.log('Receiving call from:', call.peer)
+        
+        // Check if we already have a connection with this peer
+        if (connectionsRef.current.has(call.peer)) {
+          console.log('Already connected to', call.peer, '- declining duplicate call')
+          return
+        }
+        
         call.answer(localStreamRef.current)
         
         call.on('stream', (remoteStream) => {
@@ -289,6 +332,13 @@ function VoiceChat({ roomId }) {
         call.on('close', () => {
           console.log('Call closed from:', call.peer)
           removeRemoteAudio(call.peer)
+          connectionsRef.current.delete(call.peer)
+        })
+        
+        call.on('error', (err) => {
+          console.error('Incoming call error from:', call.peer, err)
+          connectionsRef.current.delete(call.peer)
+          removeRemoteAudio(call.peer)
         })
         
         connectionsRef.current.set(call.peer, call)
@@ -297,7 +347,29 @@ function VoiceChat({ roomId }) {
       peerRef.current.on('error', (err) => {
         console.error('Peer error:', err)
         
-        if (err.type === 'network' || err.type === 'server-error') {
+        // Handle specific WebRTC errors
+        if (err.message && err.message.includes('InvalidStateError')) {
+          console.log('WebRTC state error - cleaning up connections and retrying...')
+          
+          // Clean up existing connections
+          connectionsRef.current.forEach((conn, peerId) => {
+            try {
+              conn.close()
+            } catch (e) {
+              console.warn('Error closing connection:', e)
+            }
+          })
+          connectionsRef.current.clear()
+          
+          // Retry connection after cleanup
+          setTimeout(() => {
+            if (peerRef.current) {
+              console.log('Retrying peer connection after state error cleanup')
+              setError(null)
+            }
+          }, 2000)
+          
+        } else if (err.type === 'network' || err.type === 'server-error') {
           setError('Connection failed - trying alternative server...')
           
           // Retry with fallback configuration after 3 seconds
@@ -311,24 +383,41 @@ function VoiceChat({ roomId }) {
         }
       })
 
-      // Connect to existing participants
+      // Connect to existing participants with proper signaling order
       socketRef.current.on('voice-participants', (participantsList) => {
         participantsList.forEach(participant => {
           if (participant.peerId !== peerId && !connectionsRef.current.has(participant.peerId)) {
-            console.log('Calling existing participant:', participant.peerId)
-            const call = peerRef.current.call(participant.peerId, localStreamRef.current)
+            // Only initiate call if our peerId is lexicographically smaller to avoid race conditions
+            const shouldInitiate = peerId < participant.peerId
             
-            call.on('stream', (remoteStream) => {
-              console.log('Got stream from existing participant:', participant.peerId)
-              playRemoteStream(remoteStream, participant.peerId)
-            })
-            
-            call.on('close', () => {
-              console.log('Call closed with existing participant:', participant.peerId)
-              removeRemoteAudio(participant.peerId)
-            })
-            
-            connectionsRef.current.set(participant.peerId, call)
+            if (shouldInitiate) {
+              console.log('Initiating call to existing participant:', participant.peerId)
+              setTimeout(() => {
+                if (peerRef.current && !connectionsRef.current.has(participant.peerId)) {
+                  const call = peerRef.current.call(participant.peerId, localStreamRef.current)
+                  
+                  call.on('stream', (remoteStream) => {
+                    console.log('Got stream from existing participant:', participant.peerId)
+                    playRemoteStream(remoteStream, participant.peerId)
+                  })
+                  
+                  call.on('close', () => {
+                    console.log('Call closed with existing participant:', participant.peerId)
+                    removeRemoteAudio(participant.peerId)
+                    connectionsRef.current.delete(participant.peerId)
+                  })
+                  
+                  call.on('error', (err) => {
+                    console.error('Call error with participant:', participant.peerId, err)
+                    connectionsRef.current.delete(participant.peerId)
+                  })
+                  
+                  connectionsRef.current.set(participant.peerId, call)
+                }
+              }, 1000) // Small delay to ensure both peers are ready
+            } else {
+              console.log('Waiting for call from existing participant:', participant.peerId)
+            }
           }
         })
       })
