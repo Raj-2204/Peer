@@ -921,7 +921,77 @@
   100% { box-shadow: 0 0 0 0 rgba(40, 167, 69, 0); }
 }
 
-/* Responsive voice chat */
+/* Video chat styles */
+.join-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.video-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #cccccc;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.video-option input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.voice-control-btn {
+  background: #1e1e1e;
+  border: 2px solid #444;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 1.2rem;
+}
+
+.voice-control-btn:hover {
+  background: #2a2a2a;
+  transform: scale(1.1);
+}
+
+.voice-control-btn.muted {
+  border-color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+}
+
+.voice-control-btn.video-on {
+  border-color: #2196F3;
+  background: rgba(33, 150, 243, 0.1);
+}
+
+.voice-control-btn.video-off {
+  border-color: #666;
+  background: rgba(102, 102, 102, 0.1);
+}
+
+.voice-control-btn.speaking {
+  border-color: #28a745;
+  animation: pulse 1s infinite;
+}
+
+.local-video-container {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.remote-videos-container {
+  backdrop-filter: blur(10px);
+}
+
+/* Responsive video chat */
 @media (max-width: 768px) {
   .voice-active-controls {
     flex-direction: column;
@@ -930,5 +1000,21 @@
   
   .voice-participants-list {
     flex-direction: column;
+  }
+  
+  .local-video-container {
+    bottom: 10px !important;
+    left: 10px !important;
+  }
+  
+  .local-video-container video {
+    width: 150px !important;
+    height: 112px !important;
+  }
+  
+  .remote-videos-container {
+    top: 10px !important;
+    right: 10px !important;
+    max-width: 300px !important;
   }
 }

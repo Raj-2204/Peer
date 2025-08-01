@@ -6,14 +6,17 @@ import { io } from 'socket.io-client'
 function VoiceChat({ roomId }) {
   const [isConnected, setIsConnected] = useState(false)
   const [isMuted, setIsMuted] = useState(false)
+  const [isVideoEnabled, setIsVideoEnabled] = useState(false)
   const [participants, setParticipants] = useState([])
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState(null)
+  const [connectionStatus, setConnectionStatus] = useState('disconnected')
   
   const { profile, user } = useAuth()
   const peerRef = useRef(null)
   const socketRef = useRef(null)
   const localStreamRef = useRef(null)
+  const localVideoRef = useRef(null)
   const connectionsRef = useRef(new Map())
   const audioContextRef = useRef(null)
   const analyserRef = useRef(null)
@@ -51,7 +54,7 @@ function VoiceChat({ roomId }) {
                 
                 call.on('close', () => {
                   console.log('🔊 Call closed with new participant:', data.peerId)
-                  removeRemoteAudio(data.peerId)
+                  removeRemoteMedia(data.peerId)
                   connectionsRef.current.delete(data.peerId)
                 })
                 
@@ -62,7 +65,7 @@ function VoiceChat({ roomId }) {
                 
                 connectionsRef.current.set(data.peerId, call)
               }
-            }, 1500) // Slightly longer delay for new participants
+            }, 500) // Reduced delay for faster connections
           } else {
             console.log('🔊 Waiting for call from new participant:', data.peerId)
           }
@@ -82,6 +85,9 @@ function VoiceChat({ roomId }) {
         connection.close()
         connectionsRef.current.delete(data.peerId)
       }
+      
+      // Remove their video/audio elements
+      removeRemoteMedia(data.peerId)
     })
 
     socketRef.current.on('voice-participants', (participantsList) => {
@@ -104,6 +110,16 @@ function VoiceChat({ roomId }) {
       localStreamRef.current.getTracks().forEach(track => track.stop())
       localStreamRef.current = null
     }
+
+    // Clear local video
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null
+    }
+
+    // Remove all remote video elements
+    document.querySelectorAll('[id^="remote-video-"], [id^="remote-audio-"]').forEach(el => {
+      el.remove()
+    })
 
     // Close all peer connections
     connectionsRef.current.forEach(conn => conn.close())
@@ -131,11 +147,10 @@ function VoiceChat({ roomId }) {
         peerRef.current.destroy()
       }
       
-      // Create new peer with alternative PeerJS server for fallback
+      // Create new peer with default configuration for fallback
       peerRef.current = new Peer(peerId + '-fallback', {
-        // Try alternative PeerJS server
-        host: 'peerjs-server.herokuapp.com',
-        secure: true,
+        // Use default PeerJS configuration (let it choose server)
+        // Don't specify host to use PeerJS's default servers
         config: {
           iceServers: [
             // Use more STUN servers for fallback
@@ -183,7 +198,7 @@ function VoiceChat({ roomId }) {
         
         call.on('close', () => {
           console.log('Fallback call closed from:', call.peer)
-          removeRemoteAudio(call.peer)
+          removeRemoteMedia(call.peer)
         })
         
         connectionsRef.current.set(call.peer, call)
@@ -246,33 +261,49 @@ function VoiceChat({ roomId }) {
     
     setIsJoining(true)
     setError(null)
+    setConnectionStatus('connecting')
     
     try {
-      // Get user media
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      // Get user media with optional video
+      const constraints = {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } 
-      })
+        }
+      }
+      
+      if (isVideoEnabled) {
+        constraints.video = {
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 },
+          frameRate: { min: 15, ideal: 30, max: 30 }
+        }
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       
       localStreamRef.current = stream
       detectSpeaking(stream)
       
-      // Create peer with better production configuration
-      const userId = profile?.id || user?.id || 'anon'
+      // Display local video if enabled
+      if (isVideoEnabled && localVideoRef.current) {
+        localVideoRef.current.srcObject = stream
+      }
+      
+      // Create peer with simpler ID generation
+      const userId = profile?.id || user?.id || Math.random().toString(36).substring(7)
       const userName = profile?.full_name || profile?.username || user?.email || 'Anonymous'
-      const peerId = `peer-${roomId}-${userId}-${Date.now()}`
+      const peerId = `${userId}-${Date.now()}`
       
       console.log('🔊 Creating peer with:', { userId, userName, peerId })
       
       peerRef.current = new Peer(peerId, {
-        // Use multiple PeerJS servers for better reliability
-        host: location.hostname === 'localhost' ? 'localhost' : '0.peerjs.com',
-        port: location.hostname === 'localhost' ? 9000 : 443,
+        // Always use the free PeerJS cloud server
+        host: '0.peerjs.com',
+        port: 443,
         path: '/',
-        secure: location.hostname !== 'localhost',
+        secure: true,
         config: {
           iceServers: [
             // Multiple STUN servers for better connectivity
@@ -297,12 +328,14 @@ function VoiceChat({ roomId }) {
           iceTransportPolicy: 'all',
           bundlePolicy: 'balanced'
         },
-        debug: location.hostname !== 'localhost' ? 2 : 1 // More debugging in production
+        debug: 0 // Disable debug in production to reduce noise
       })
 
       peerRef.current.on('open', (id) => {
         console.log('Peer opened with ID:', id)
         setIsConnected(true)
+        setConnectionStatus('connected')
+        setError(null)
         
         // Join room via socket with more debug info
         console.log('🔊 Joining voice room:', { roomId, peerId: id, userName })
@@ -331,14 +364,14 @@ function VoiceChat({ roomId }) {
         
         call.on('close', () => {
           console.log('Call closed from:', call.peer)
-          removeRemoteAudio(call.peer)
+          removeRemoteMedia(call.peer)
           connectionsRef.current.delete(call.peer)
         })
         
         call.on('error', (err) => {
           console.error('Incoming call error from:', call.peer, err)
           connectionsRef.current.delete(call.peer)
-          removeRemoteAudio(call.peer)
+          removeRemoteMedia(call.peer)
         })
         
         connectionsRef.current.set(call.peer, call)
@@ -349,7 +382,7 @@ function VoiceChat({ roomId }) {
         
         // Handle specific WebRTC errors
         if (err.message && err.message.includes('InvalidStateError')) {
-          console.log('WebRTC state error - cleaning up connections and retrying...')
+          console.log('WebRTC state error - cleaning up connections...')
           
           // Clean up existing connections
           connectionsRef.current.forEach((conn, peerId) => {
@@ -361,20 +394,19 @@ function VoiceChat({ roomId }) {
           })
           connectionsRef.current.clear()
           
-          // Retry connection after cleanup
-          setTimeout(() => {
-            if (peerRef.current) {
-              console.log('Retrying peer connection after state error cleanup')
-              setError(null)
-            }
-          }, 2000)
+          setError('Connection state error - please try rejoining')
+          setIsConnected(false)
+          setIsJoining(false)
           
-        } else if (err.type === 'network' || err.type === 'server-error') {
-          setError('Connection failed - trying alternative server...')
+        } else if (err.type === 'network' || err.type === 'server-error' || err.message?.includes('Lost connection to server')) {
+          console.log('PeerJS server connection failed, retrying...')
+          setError('Connection failed - retrying...')
           
-          // Retry with fallback configuration after 3 seconds
+          // Simple retry without complex fallback
           setTimeout(() => {
-            tryFallbackPeerConnection(peerId, localStreamRef.current)
+            setError(null)
+            setIsJoining(false)
+            setIsConnected(false)
           }, 3000)
         } else {
           setError(`Voice chat error: ${err.message || 'Connection failed'}`)
@@ -403,7 +435,7 @@ function VoiceChat({ roomId }) {
                   
                   call.on('close', () => {
                     console.log('Call closed with existing participant:', participant.peerId)
-                    removeRemoteAudio(participant.peerId)
+                    removeRemoteMedia(participant.peerId)
                     connectionsRef.current.delete(participant.peerId)
                   })
                   
@@ -414,7 +446,7 @@ function VoiceChat({ roomId }) {
                   
                   connectionsRef.current.set(participant.peerId, call)
                 }
-              }, 1000) // Small delay to ensure both peers are ready
+              }, 500) // Reduced delay for faster connections
             } else {
               console.log('Waiting for call from existing participant:', participant.peerId)
             }
@@ -432,22 +464,76 @@ function VoiceChat({ roomId }) {
   }
 
   const playRemoteStream = (stream, peerId) => {
-    // Remove existing audio element if any
-    removeRemoteAudio(peerId)
+    // Remove existing elements if any
+    removeRemoteMedia(peerId)
     
-    // Create new audio element
-    const audio = document.createElement('audio')
-    audio.id = `remote-audio-${peerId}`
-    audio.srcObject = stream
-    audio.autoplay = true
-    audio.playsInline = true
-    document.body.appendChild(audio)
+    const hasVideo = stream.getVideoTracks().length > 0
+    
+    if (hasVideo) {
+      // Create video element for video streams
+      const video = document.createElement('video')
+      video.id = `remote-video-${peerId}`
+      video.srcObject = stream
+      video.autoplay = true
+      video.playsInline = true
+      video.muted = false // We want to hear the audio
+      video.style.cssText = `
+        width: 200px;
+        height: 150px;
+        border-radius: 8px;
+        object-fit: cover;
+        border: 2px solid #4CAF50;
+        margin: 4px;
+      `
+      
+      // Add to video container
+      const videoContainer = document.getElementById('remote-videos-container') || 
+                            createVideoContainer()
+      videoContainer.appendChild(video)
+    } else {
+      // Create audio element for audio-only streams
+      const audio = document.createElement('audio')
+      audio.id = `remote-audio-${peerId}`
+      audio.srcObject = stream
+      audio.autoplay = true
+      audio.playsInline = true
+      document.body.appendChild(audio)
+    }
   }
 
-  const removeRemoteAudio = (peerId) => {
+  const createVideoContainer = () => {
+    let container = document.getElementById('remote-videos-container')
+    if (!container) {
+      container = document.createElement('div')
+      container.id = 'remote-videos-container'
+      container.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        display: flex;
+        flex-wrap: wrap;
+        max-width: 400px;
+        z-index: 1000;
+        background: rgba(0,0,0,0.1);
+        border-radius: 12px;
+        padding: 8px;
+      `
+      document.body.appendChild(container)
+    }
+    return container
+  }
+
+  const removeRemoteMedia = (peerId) => {
+    const video = document.getElementById(`remote-video-${peerId}`)
     const audio = document.getElementById(`remote-audio-${peerId}`)
-    if (audio) {
-      audio.remove()
+    
+    if (video) video.remove()
+    if (audio) audio.remove()
+    
+    // Clean up empty container
+    const container = document.getElementById('remote-videos-container')
+    if (container && container.children.length === 0) {
+      container.remove()
     }
   }
 
@@ -477,6 +563,99 @@ function VoiceChat({ roomId }) {
     }
   }
 
+  const toggleVideo = async () => {
+    if (!isConnected) return
+
+    try {
+      if (isVideoEnabled) {
+        // Turn off video
+        const videoTracks = localStreamRef.current?.getVideoTracks() || []
+        videoTracks.forEach(track => track.stop())
+        
+        // Clear local video display
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null
+        }
+        
+        // Get new audio-only stream
+        const audioStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        })
+        
+        localStreamRef.current = audioStream
+        setIsVideoEnabled(false)
+        
+      } else {
+        // Turn on video
+        const constraints = {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          },
+          video: {
+            width: { min: 640, ideal: 1280, max: 1920 },
+            height: { min: 480, ideal: 720, max: 1080 },
+            frameRate: { min: 15, ideal: 30, max: 30 }
+          }
+        }
+        
+        const videoStream = await navigator.mediaDevices.getUserMedia(constraints)
+        
+        // Stop old stream
+        if (localStreamRef.current) {
+          localStreamRef.current.getTracks().forEach(track => track.stop())
+        }
+        
+        localStreamRef.current = videoStream
+        setIsVideoEnabled(true)
+        
+        // Display local video
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = videoStream
+        }
+      }
+      
+      // Update all peer connections with new stream
+      connectionsRef.current.forEach(async (connection, peerId) => {
+        try {
+          // Close old connection
+          connection.close()
+          
+          // Create new call with updated stream
+          const newCall = peerRef.current.call(peerId, localStreamRef.current)
+          
+          newCall.on('stream', (remoteStream) => {
+            console.log('Updated stream from:', peerId)
+            playRemoteStream(remoteStream, peerId)
+          })
+          
+          newCall.on('close', () => {
+            removeRemoteMedia(peerId)
+            connectionsRef.current.delete(peerId)
+          })
+          
+          newCall.on('error', (err) => {
+            console.error('Updated call error:', err)
+            connectionsRef.current.delete(peerId)
+          })
+          
+          connectionsRef.current.set(peerId, newCall)
+        } catch (err) {
+          console.error('Failed to update connection:', err)
+        }
+      })
+      
+    } catch (err) {
+      console.error('Failed to toggle video:', err)
+      setError('Failed to toggle video: ' + err.message)
+    }
+  }
+
   if (error) {
     return (
       <div className="voice-chat-container">
@@ -492,16 +671,64 @@ function VoiceChat({ roomId }) {
 
   return (
     <div className="voice-chat-container">
+      {/* Local video display */}
+      {isVideoEnabled && (
+        <div className="local-video-container" style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          zIndex: 1000,
+          borderRadius: '12px',
+          overflow: 'hidden'
+        }}>
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: '200px',
+              height: '150px',
+              objectFit: 'cover',
+              border: '2px solid #2196F3'
+            }}
+          />
+          <div style={{
+            position: 'absolute',
+            bottom: '8px',
+            left: '8px',
+            background: 'rgba(0,0,0,0.7)',
+            color: 'white',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            fontSize: '12px'
+          }}>
+            You {isMuted ? '🔇' : (isSpeaking ? '🔊' : '🎤')}
+          </div>
+        </div>
+      )}
+
       <div className="voice-chat-controls">
         {!isConnected ? (
-          <button 
-            onClick={joinVoiceChat} 
-            disabled={isJoining}
-            className="btn-primary voice-join-btn"
-            title="Join voice chat"
-          >
-            {isJoining ? '🔄 Joining...' : '🎤 Join Voice'}
-          </button>
+          <div className="join-controls">
+            <label className="video-option">
+              <input
+                type="checkbox"
+                checked={isVideoEnabled}
+                onChange={(e) => setIsVideoEnabled(e.target.checked)}
+                disabled={isJoining}
+              />
+              📹 Join with video
+            </label>
+            <button 
+              onClick={joinVoiceChat} 
+              disabled={isJoining}
+              className="btn-primary voice-join-btn"
+              title={isVideoEnabled ? "Join video call" : "Join voice chat"}
+            >
+              {isJoining ? '🔄 Joining...' : (isVideoEnabled ? '📹 Join Video' : '🎤 Join Voice')}
+            </button>
+          </div>
         ) : (
           <div className="voice-active-controls">
             <button 
@@ -511,17 +738,34 @@ function VoiceChat({ roomId }) {
             >
               {isMuted ? '🔇' : '🎤'}
             </button>
+
+            <button 
+              onClick={toggleVideo}
+              className={`voice-control-btn ${isVideoEnabled ? 'video-on' : 'video-off'}`}
+              title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+            >
+              {isVideoEnabled ? '📹' : '📷'}
+            </button>
             
             <div className="voice-participants">
               <span className="participant-count">
                 👥 {participants.length + 1} in call
+              </span>
+              <span className="connection-status" style={{
+                fontSize: '0.8rem',
+                color: connectionStatus === 'connected' ? '#28a745' : 
+                       connectionStatus === 'connecting' ? '#ffc107' : '#dc3545',
+                marginLeft: '8px'
+              }}>
+                {connectionStatus === 'connected' ? '🟢' : 
+                 connectionStatus === 'connecting' ? '🟡' : '🔴'}
               </span>
             </div>
             
             <button 
               onClick={leaveVoiceChat}
               className="btn-danger voice-leave-btn"
-              title="Leave voice chat"
+              title="Leave call"
             >
               📞 Leave
             </button>
