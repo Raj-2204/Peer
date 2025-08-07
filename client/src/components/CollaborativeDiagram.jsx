@@ -13,9 +13,15 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 import { v4 as uuidv4 } from 'uuid';
 import DiagramTemplates from './DiagramTemplates';
+import { RectangleNode, CircleNode, DiamondNode, TextNode, ArrowNode, DatabaseNode } from './DiagramNodes';
 
 const nodeTypes = {
-  // Custom node types can be added here in the future
+  rectangle: RectangleNode,
+  circle: CircleNode,
+  diamond: DiamondNode,
+  text: TextNode,
+  arrow: ArrowNode,
+  database: DatabaseNode
 };
 
 const edgeTypes = {
@@ -28,6 +34,8 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
   const reactFlowInstance = useReactFlow();
   const [isConnected, setIsConnected] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [selectedColor, setSelectedColor] = useState('#007acc');
   const lastUpdateRef = useRef(0);
 
   // Initialize socket connection for diagram
@@ -138,11 +146,23 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
 
   // Add new node
   const addNode = useCallback((type = 'default', position = null) => {
-    if (!reactFlowInstance) return;
-
     const defaultPosition = position || {
       x: Math.random() * 300 + 100,
       y: Math.random() * 300 + 100
+    };
+
+    const getNodeLabel = (nodeType) => {
+      switch (nodeType) {
+        case 'input': return 'Start';
+        case 'output': return 'End';
+        case 'rectangle': return 'Rectangle';
+        case 'circle': return 'Circle';
+        case 'diamond': return 'Decision';
+        case 'text': return 'Text Note';
+        case 'arrow': return 'Process';
+        case 'database': return 'Database';
+        default: return `${type.charAt(0).toUpperCase() + type.slice(1)} Node`;
+      }
     };
 
     const newNode = {
@@ -150,9 +170,18 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
       type,
       position: defaultPosition,
       data: {
-        label: type === 'input' ? 'Start' : 
-               type === 'output' ? 'End' : 
-               `${type.charAt(0).toUpperCase() + type.slice(1)} Node`
+        label: getNodeLabel(type),
+        backgroundColor: selectedColor,
+        textColor: '#ffffff',
+        onLabelChange: (newLabel) => {
+          setNodes((nds) => 
+            nds.map((node) => 
+              node.id === newNode.id 
+                ? { ...node, data: { ...node.data, label: newLabel } }
+                : node
+            )
+          );
+        }
       }
     };
 
@@ -161,7 +190,7 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
       emitDiagramChange(updatedNodes, edges);
       return updatedNodes;
     });
-  }, [reactFlowInstance, setNodes, emitDiagramChange, edges]);
+  }, [setNodes, emitDiagramChange, edges, selectedColor]);
 
   // Clear diagram
   const clearDiagram = useCallback(() => {
@@ -178,12 +207,53 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
     setShowTemplates(false);
   }, [setNodes, setEdges, emitDiagramChange]);
 
+  // Toggle fullscreen
+  const toggleFullscreen = useCallback(() => {
+    if (!isFullscreen) {
+      // Enter fullscreen
+      const elem = document.querySelector('.diagram-container');
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen();
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    } else {
+      // Exit fullscreen
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      } else if (document.webkitExitFullscreen) {
+        document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+        document.msExitFullscreen();
+      }
+    }
+  }, [isFullscreen]);
+
+  // Listen for fullscreen changes
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('msfullscreenchange', handleFullscreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   if (!isVisible) {
     return null;
   }
 
   return (
-    <div className="diagram-container">
+    <div className={`diagram-container ${isFullscreen ? 'fullscreen' : ''}`}>
       <div className="diagram-header">
         <h3>Collaborative Diagram</h3>
         <div className="diagram-status">
@@ -192,6 +262,13 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
             className="tool-btn"
           >
             📋 Templates
+          </button>
+          <button 
+            onClick={toggleFullscreen}
+            className="tool-btn"
+            title={isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
+          >
+            {isFullscreen ? '🔍' : '🖥️'} {isFullscreen ? 'Exit' : 'Fullscreen'}
           </button>
           <span className={`status-indicator ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? '●' : '○'} {isConnected ? 'Connected' : 'Disconnected'}
@@ -221,19 +298,50 @@ function DiagramCanvas({ roomId, socket, isVisible }) {
           
           <Panel position="top-left" className="diagram-tools">
             <div className="tool-group">
+              <h4>Basic Shapes</h4>
               <button onClick={() => addNode('input')} className="tool-btn">
                 📥 Start
               </button>
-              <button onClick={() => addNode('default')} className="tool-btn">
-                ⬜ Process
+              <button onClick={() => addNode('rectangle')} className="tool-btn">
+                ⬜ Rectangle
+              </button>
+              <button onClick={() => addNode('circle')} className="tool-btn">
+                ⭕ Circle
+              </button>
+              <button onClick={() => addNode('diamond')} className="tool-btn">
+                💎 Diamond
               </button>
               <button onClick={() => addNode('output')} className="tool-btn">
                 📤 End
               </button>
             </div>
             <div className="tool-group">
+              <h4>Special Shapes</h4>
+              <button onClick={() => addNode('arrow')} className="tool-btn">
+                ➡️ Process
+              </button>
+              <button onClick={() => addNode('database')} className="tool-btn">
+                🗄️ Database
+              </button>
+              <button onClick={() => addNode('text')} className="tool-btn">
+                📝 Text Note
+              </button>
+            </div>
+            <div className="tool-group">
+              <h4>Color</h4>
+              <div className="color-picker">
+                <input 
+                  type="color" 
+                  value={selectedColor}
+                  onChange={(e) => setSelectedColor(e.target.value)}
+                  className="color-input"
+                />
+                <span>Node Color</span>
+              </div>
+            </div>
+            <div className="tool-group">
               <button onClick={clearDiagram} className="tool-btn danger">
-                🗑️ Clear
+                🗑️ Clear All
               </button>
             </div>
           </Panel>
