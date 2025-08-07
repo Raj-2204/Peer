@@ -1603,6 +1603,293 @@
   background: #555;
 }
 
+/* Diagram Styles */
+.diagram-container {
+  background: #1a1a1a;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  border: 1px solid #333;
+  height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+
+.diagram-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+  background: #1e1e1e;
+}
+
+.diagram-header h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.diagram-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.diagram-canvas {
+  flex: 1;
+  position: relative;
+}
+
+/* React Flow overrides */
+.react-flow__node {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 14px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.react-flow__node.selected {
+  border-color: #007acc;
+  box-shadow: 0 0 0 2px rgba(0, 122, 204, 0.3);
+}
+
+.react-flow__node-input {
+  background: #28a745;
+}
+
+.react-flow__node-output {
+  background: #dc3545;
+}
+
+.react-flow__node-default {
+  background: #007acc;
+}
+
+.react-flow__handle {
+  background: #ffffff;
+  border: 2px solid #333;
+}
+
+.react-flow__handle.react-flow__handle-top {
+  top: -5px;
+}
+
+.react-flow__handle.react-flow__handle-bottom {
+  bottom: -5px;
+}
+
+.react-flow__handle.react-flow__handle-left {
+  left: -5px;
+}
+
+.react-flow__handle.react-flow__handle-right {
+  right: -5px;
+}
+
+.react-flow__edge-path {
+  stroke: #007acc;
+  stroke-width: 2;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #4fc3f7;
+  stroke-width: 3;
+}
+
+.react-flow__edge-text {
+  fill: #ffffff;
+  font-size: 12px;
+}
+
+.react-flow__controls {
+  background: #2d2d2d;
+  border: 1px solid #444;
+}
+
+.react-flow__controls-button {
+  background: #2d2d2d;
+  border: none;
+  color: #ffffff;
+  border-bottom: 1px solid #444;
+}
+
+.react-flow__controls-button:hover {
+  background: #3a3a3a;
+}
+
+.react-flow__minimap {
+  background: #1e1e1e;
+  border: 1px solid #444;
+}
+
+.react-flow__minimap-mask {
+  fill: rgba(0, 122, 204, 0.2);
+  stroke: #007acc;
+}
+
+.react-flow__minimap-node {
+  fill: #444;
+  stroke: none;
+}
+
+.react-flow__background {
+  background: #1a1a1a;
+}
+
+/* Diagram tools panel */
+.diagram-tools {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.tool-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tool-btn {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #ffffff;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tool-btn:hover {
+  background: #333;
+  border-color: #007acc;
+}
+
+.tool-btn.danger {
+  border-color: #dc3545;
+}
+
+.tool-btn.danger:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+}
+
+/* View toggle styles */
+.view-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.view-btn {
+  background: #333;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.view-btn:hover {
+  background: #444;
+}
+
+.view-btn.active {
+  background: #007acc;
+}
+
+.view-btn.active:hover {
+  background: #0056b3;
+}
+
+/* Diagram Templates */
+.diagram-templates {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.diagram-templates h4 {
+  margin: 0 0 1rem 0;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.75rem;
+}
+
+.template-card {
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 0.75rem 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: #ffffff;
+}
+
+.template-card:hover {
+  background: #333;
+  border-color: #007acc;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 122, 204, 0.2);
+}
+
+.template-icon {
+  font-size: 1.5rem;
+}
+
+.template-name {
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* Responsive diagram templates */
+@media (max-width: 768px) {
+  .template-grid {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  }
+  
+  .template-card {
+    padding: 0.5rem 0.25rem;
+  }
+  
+  .template-icon {
+    font-size: 1.2rem;
+  }
+  
+  .template-name {
+    font-size: 0.75rem;
+  }
+}
+
 /* Responsive chat */
 @media (max-width: 768px) {
   .message.my-message {

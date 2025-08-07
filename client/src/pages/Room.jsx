@@ -4,6 +4,7 @@ import { io } from 'socket.io-client'
 import CodeEditor from '../components/CodeEditor'
 import VoiceChat from '../components/VoiceChat'
 import MembersSidebar from '../components/MembersSidebar'
+import CollaborativeDiagram from '../components/CollaborativeDiagram'
 
 function Room() {
   const { id: roomId } = useParams()
@@ -11,6 +12,7 @@ function Room() {
   const [language, setLanguage] = useState('javascript')
   const [output, setOutput] = useState('')
   const [isRunning, setIsRunning] = useState(false)
+  const [currentView, setCurrentView] = useState('code') // 'code' or 'diagram'
   const socketRef = useRef(null)
 
   useEffect(() => {
@@ -90,50 +92,82 @@ function Room() {
       {/* Voice Chat */}
       <VoiceChat roomId={roomId} />
 
-      <div className="editor-controls">
-        <select 
-          value={language} 
-          onChange={(e) => {
-            const newLang = e.target.value
-            setLanguage(newLang)
-            // Emit language change to other users via socket
-            if (socketRef.current) {
-              socketRef.current.emit('language-change', {
-                roomId,
-                language: newLang
-              })
-            }
-          }}
-          className="language-select"
-        >
-          {languages.map(lang => (
-            <option key={lang.value} value={lang.value}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-
+      {/* View Toggle */}
+      <div className="view-toggle">
         <button 
-          onClick={runCode} 
-          disabled={isRunning}
-          className="run-btn"
+          className={`view-btn ${currentView === 'code' ? 'active' : ''}`}
+          onClick={() => setCurrentView('code')}
         >
-          {isRunning ? 'Running...' : 'Run Code'}
+          💻 Code Editor
+        </button>
+        <button 
+          className={`view-btn ${currentView === 'diagram' ? 'active' : ''}`}
+          onClick={() => setCurrentView('diagram')}
+        >
+          📊 Diagram
         </button>
       </div>
 
-      <CodeEditor
-        roomId={roomId}
-        code={code}
-        language={language}
-        onCodeChange={handleCodeChange}
-        onLanguageChange={handleLanguageChange}
-      />
+      {currentView === 'code' && (
+        <div className="editor-controls">
+          <select 
+            value={language} 
+            onChange={(e) => {
+              const newLang = e.target.value
+              setLanguage(newLang)
+              // Emit language change to other users via socket
+              if (socketRef.current) {
+                socketRef.current.emit('language-change', {
+                  roomId,
+                  language: newLang
+                })
+              }
+            }}
+            className="language-select"
+          >
+            {languages.map(lang => (
+              <option key={lang.value} value={lang.value}>
+                {lang.label}
+              </option>
+            ))}
+          </select>
 
-      <div className="output-section">
-        <h3>Output:</h3>
-        <pre className="output">{output}</pre>
-      </div>
+          <button 
+            onClick={runCode} 
+            disabled={isRunning}
+            className="run-btn"
+          >
+            {isRunning ? 'Running...' : 'Run Code'}
+          </button>
+        </div>
+      )}
+
+      {/* Code Editor View */}
+      {currentView === 'code' && (
+        <>
+          <CodeEditor
+            roomId={roomId}
+            code={code}
+            language={language}
+            onCodeChange={handleCodeChange}
+            onLanguageChange={handleLanguageChange}
+          />
+
+          <div className="output-section">
+            <h3>Output:</h3>
+            <pre className="output">{output}</pre>
+          </div>
+        </>
+      )}
+
+      {/* Diagram View */}
+      {currentView === 'diagram' && (
+        <CollaborativeDiagram 
+          roomId={roomId} 
+          socket={socketRef.current} 
+          isVisible={currentView === 'diagram'}
+        />
+      )}
     </div>
   )
 }

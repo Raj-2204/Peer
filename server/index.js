@@ -41,6 +41,9 @@ const roomMembers = new Map();
 // Store chat messages by room
 const roomMessages = new Map();
 
+// Store diagram data by room
+const roomDiagrams = new Map();
+
 // Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
@@ -57,9 +60,20 @@ io.on('connection', (socket) => {
         language: 'javascript'
       });
     }
+
+    // Initialize diagram for room if it doesn't exist
+    if (!roomDiagrams.has(roomId)) {
+      roomDiagrams.set(roomId, {
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 }
+      });
+    }
     
     // Send current room state to the joining user
     socket.emit('room-state', rooms.get(roomId));
+    // Send current diagram state to the joining user
+    socket.emit('diagram-state', roomDiagrams.get(roomId));
   });
 
   // Handle code changes
@@ -302,6 +316,63 @@ io.on('connection', (socket) => {
     });
   });
 
+  // Diagram handlers
+  socket.on('join-diagram', (roomId) => {
+    socket.join(`diagram-${roomId}`);
+    console.log(`User ${socket.id} joined diagram room ${roomId}`);
+    
+    // Send current diagram state to the joining user
+    if (roomDiagrams.has(roomId)) {
+      socket.emit('diagram-state', roomDiagrams.get(roomId));
+    }
+  });
+
+  socket.on('diagram-change', (data) => {
+    const { roomId, nodes, edges, viewport } = data;
+    
+    console.log(`Diagram change in room ${roomId}`);
+    
+    // Update room diagram state
+    if (roomDiagrams.has(roomId)) {
+      roomDiagrams.set(roomId, { nodes, edges, viewport });
+    }
+    
+    // Broadcast to all other users in the diagram room
+    socket.to(`diagram-${roomId}`).emit('diagram-change', { nodes, edges, viewport });
+  });
+
+  socket.on('diagram-node-change', (data) => {
+    const { roomId, nodeId, changes } = data;
+    
+    console.log(`Node ${nodeId} changed in room ${roomId}`);
+    
+    // Broadcast node change to all other users in the diagram room
+    socket.to(`diagram-${roomId}`).emit('diagram-node-change', { nodeId, changes });
+  });
+
+  socket.on('diagram-edge-change', (data) => {
+    const { roomId, edgeId, changes } = data;
+    
+    console.log(`Edge ${edgeId} changed in room ${roomId}`);
+    
+    // Broadcast edge change to all other users in the diagram room
+    socket.to(`diagram-${roomId}`).emit('diagram-edge-change', { edgeId, changes });
+  });
+
+  socket.on('diagram-viewport-change', (data) => {
+    const { roomId, viewport } = data;
+    
+    // Update room diagram viewport
+    if (roomDiagrams.has(roomId)) {
+      const diagramData = roomDiagrams.get(roomId);
+      diagramData.viewport = viewport;
+      roomDiagrams.set(roomId, diagramData);
+    }
+    
+    // Broadcast viewport change to all other users in the diagram room
+    socket.to(`diagram-${roomId}`).emit('diagram-viewport-change', { viewport });
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
@@ -378,7 +449,8 @@ app.get('/health', (req, res) => {
     rooms: rooms.size, 
     voiceRooms: voiceRooms.size,
     roomMembers: roomMembers.size,
-    roomMessages: roomMessages.size
+    roomMessages: roomMessages.size,
+    roomDiagrams: roomDiagrams.size
   });
 });
 
@@ -390,7 +462,8 @@ app.get('/', (req, res) => {
     rooms: rooms.size,
     voiceRooms: voiceRooms.size,
     roomMembers: roomMembers.size,
-    roomMessages: roomMessages.size
+    roomMessages: roomMessages.size,
+    roomDiagrams: roomDiagrams.size
   });
 });
 
