@@ -33,6 +33,125 @@
   color: #cccccc;
 }
 
+.sample-account {
+  width: 280px;
+  padding: 2rem 1rem;
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sample-account.left {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sample-account.right {
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.account-card {
+  background: #2d2d2d;
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid #444;
+  transition: transform 0.3s ease;
+  width: 100%;
+}
+
+.account-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 122, 204, 0.15);
+}
+
+.account-avatar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.account-avatar .avatar-placeholder {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: 1.2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.account-info h3 {
+  margin: 0 0 0.5rem 0;
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.account-email {
+  color: #888;
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  word-break: break-all;
+}
+
+.account-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+}
+
+.account-status.online {
+  color: #28a745;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #28a745;
+  animation: pulse 2s infinite;
+}
+
+.account-features {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.feature-badge {
+  background: rgba(0, 122, 204, 0.2);
+  color: #4fc3f7;
+  padding: 0.2rem 0.4rem;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  border: 1px solid rgba(0, 122, 204, 0.3);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .sample-account {
+    display: none;
+  }
+  
+  .home-layout {
+    justify-content: center;
+  }
+}
+
 .create-room-btn {
   background: linear-gradient(45deg, #007acc, #4fc3f7);
   color: white;
@@ -163,13 +282,45 @@
 }
 
 /* Authentication Styles */
-.auth-container {
+.auth-layout {
+  display: flex;
   min-height: 100vh;
+  background: #1e1e1e;
+}
+
+.auth-container {
+  flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #1e1e1e;
   padding: 2rem;
+}
+
+.sample-accounts-sidebar {
+  width: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.sample-text {
+  color: #cccccc;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.sample-text p {
+  margin: 0.25rem 0;
+}
+
+/* Responsive - hide sidebar on smaller screens */
+@media (max-width: 768px) {
+  .sample-accounts-sidebar {
+    display: none;
+  }
 }
 
 .auth-card {

@@ -28,58 +28,70 @@ function Login() {
   }
 
   return (
-    <div className="auth-container">
-      <div className="auth-card">
-        <h2>Sign In</h2>
-        <p>Welcome back to Peer Programming</p>
-        
-        {error && (
-          <div className="error-message">
-            {error}
+    <div className="auth-layout">
+      <div className="auth-container">
+        <div className="auth-card">
+          <h2>Sign In</h2>
+          <p>Welcome back to Peer Programming</p>
+          
+          {error && (
+            <div className="error-message">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            <div className="form-group">
+              <label htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="password">Password</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                required
+              />
+            </div>
+
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="auth-button"
+            >
+              {loading ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+
+          <div className="auth-footer">
+            <p>
+              Don't have an account?{' '}
+              <Link to="/signup" className="auth-link">
+                Sign up
+              </Link>
+            </p>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="auth-form">
-          <div className="form-group">
-            <label htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="password">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your password"
-              required
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className="auth-button"
-          >
-            {loading ? 'Signing in...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="auth-footer">
-          <p>
-            Don't have an account?{' '}
-            <Link to="/signup" className="auth-link">
-              Sign up
-            </Link>
-          </p>
+        </div>
+      </div>
+      
+      <div className="sample-accounts-sidebar">
+        <div className="sample-text">
+          <p>mentossgaming12@gmail.com</p>
+          <p>pass: mentoss</p>
+          <br />
+          <p>rajveerbakhshi@gmail.com</p>
+          <p>pass: rajveer</p>
         </div>
       </div>
     </div>
