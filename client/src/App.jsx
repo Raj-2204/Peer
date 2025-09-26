@@ -8,7 +8,7 @@ import Friends from './pages/Friends'
 import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
 import './App.css'
-import { Analytics } from '@vercel/analytics/react'
+// import { Analytics } from '@vercel/analytics/react'
 
 // Protected Route Component
 function ProtectedRoute({ children }) {
@@ -91,7 +91,7 @@ function App() {
         <AuthProvider>
           <AppRoutes />
         </AuthProvider>
-        <Analytics />
+        {/* <Analytics /> */}
       </Router>
     </ErrorBoundary>
   )
